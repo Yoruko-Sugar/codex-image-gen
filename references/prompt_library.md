@@ -9,15 +9,18 @@
   的核心手法。
 - 多张同批素材共享同一段风格锚点（相同的底色区间与点缀光色），否则批次
   观感会漂移；更稳的做法是给每张都挂 `--ref 第一张成品.png`。
+- 模板里的 `<...>` 是待填槽位：风格锚点（底色 + 点缀光色 + 质感关键词）
+  填你自己项目的，全组素材复用同一段。
 
 ## 文生图模板
 
 ### 无缝贴图（材质/地面/皮肤）——关键是 `seamless tileable` 与 `flat lighting`
 
 ```
-Seamless tileable PBR albedo texture, dark sci-fi metal plating, interlocking
-panels, matte gunmetal base, cyan (#4DD8FF) emissive traces along seams, fine
-scratches, top-down orthographic flat lighting, no shadows, no vignette,
+Seamless tileable PBR albedo texture, <材质描述：如 dark metal plating
+with interlocking panels / mossy stone bricks>, <底色描述>, <点缀光色(色值)
+及分布，如 subtle emissive traces along seams>, <细节特征：scratches /
+dirt / wear>, top-down orthographic flat lighting, no shadows, no vignette,
 uniform detail distribution, game-ready texture, 1024x1024
 ```
 
@@ -27,17 +30,17 @@ pattern must align at tile edges` 后重新生成。
 ### 特效精灵（加法混合粒子）——关键是纯黑底与不贴边
 
 ```
-Game VFX sprite, single expanding shockwave ring, sharp cyan energy rim with
-electric arc filaments, inner glow fade to black center, dark sci-fi style,
+Game VFX sprite, <单个特效描述：如 an expanding shockwave ring / a burst
+of sparks>, <能量边缘与内部渐变描述>, <风格锚点：质感关键词 + 点缀色(色值)>,
 isolated on pure black background, centered, effect does not touch edges, 512x512
 ```
 
 ### 透明底精灵/图标（角色、道具、UI 元素）
 
 ```
-Game asset sprite of <主体>, dark sci-fi style, <姿态/朝向描述>,
-isolated on fully transparent background, centered with margin, crisp silhouette,
-no text, no watermark, 512x512
+Game asset sprite of <主体>, <风格锚点：质感关键词 + 配色(色值)>,
+<姿态/朝向描述>, isolated on fully transparent background, centered with
+margin, crisp silhouette, no text, no watermark, 512x512
 ```
 
 配 `--expect-alpha` 验收四角透明。
@@ -45,19 +48,18 @@ no text, no watermark, 512x512
 ### UI 图标——关键是纯色底与居中
 
 ```
-[主体描述，如 Hexagonal data-core chip with green circuit lines], flat game
-icon style, centered composition, solid dark background (#0B0F14), crisp
-edges, high contrast, no text, 512x512
+<主体描述，如 a hexagonal data-core chip with circuit lines>, <风格锚点：
+flat game icon style + 底色(色值) + 点缀色(色值)>, centered composition,
+solid dark background (<色值>), crisp edges, high contrast, no text, 512x512
 ```
 
 ### 关键视觉/标题画（title screen、宣传图）
 
 ```
-Key art for a dark sci-fi game title screen, wide establishing shot of
-<主体场景>, dramatic rim lighting, gunmetal surfaces with cyan (#4DD8FF)
-and amber (#FFC94D) accent lights, atmospheric fog, cinematic composition
-with clear focal point and empty upper third for title text, highly detailed,
-1536x1024
+Key art for a <项目类型> title screen, wide establishing shot of <主体场景>,
+dramatic rim lighting, <风格锚点：质感 + 主色 + 点缀光色(色值)>,
+atmospheric fog, cinematic composition with clear focal point and empty
+<upper/one side> third for title text, highly detailed, 1536x1024
 ```
 
 ### 角色概念设定图（多视角参考）
@@ -66,15 +68,15 @@ with clear focal point and empty upper third for title text, highly detailed,
 Character concept sheet, <角色描述：职业/体型/装备/配色>, three views
 (front / side / back) arranged in a horizontal row on neutral dark gray
 background, consistent proportions and details across views, flat neutral
-lighting, game concept art style, no text labels, 1536x1024
+lighting, <风格锚点：concept art 风格关键词>, no text labels, 1536x1024
 ```
 
 ### 精灵序列帧（动画）
 
 ```
-Sprite sheet of <主体与动画描述，如 drone propeller spinning / walk cycle>,
-6 frames arranged in a single horizontal row, equal frame size, consistent
-lighting and colors, dark sci-fi style, plain dark background (#0B0F14),
+Sprite sheet of <主体与动画描述，如 walk cycle / propeller spinning>,
+<N 帧> frames arranged in a single horizontal row, equal frame size, consistent
+lighting and colors, <风格锚点>, plain dark background (<色值>),
 frames evenly spaced, no text, 1536x256
 ```
 
@@ -84,18 +86,17 @@ frames evenly spaced, no text, 1536x256
 ### 场景背景/环境图（可含视差分层）
 
 ```
-Game background environment, <场景描述>, dark sci-fi mood, layered depth
-(foreground silhouettes / midground structures / background glow), consistent
-with style anchors: gunmetal base, cyan (#4DD8FF) accents, horizontal
-composition designed for parallax, no characters, no text, 1536x1024
+Game background environment, <场景描述>, <风格锚点：氛围 + 主色 + 点缀色(色值)>,
+layered depth (foreground silhouettes / midground structures / background glow),
+horizontal composition designed for parallax, no characters, no text, 1536x1024
 ```
 
 ### 九宫格 UI 边框
 
 ```
 Game UI panel border frame, 9-slice layout: ornate corners, plain straight
-edge segments, dark sci-fi metal style with cyan (#4DD8FF) edge glow,
-center area fully flat single color (#0B0F14), symmetrical, no text, 512x512
+edge segments, <风格锚点：质感 + 底色(色值) + 边缘光色(色值)>,
+center area fully flat single color (<色值>), symmetrical, no text, 512x512
 ```
 
 ### PBR 通道图（在 albedo 成品基础上派生）
@@ -117,9 +118,9 @@ albedo 派生才能对齐。
 
 ```
 Poster for <项目名/主题>, <构图描述：主体+场景+氛围>, bold focal hierarchy,
-style anchors: gunmetal, cyan (#4DD8FF) and amber (#FFC94D) accents,
-clear space for headline typography, print-ready composition, no embedded
-text (typography added later in code), 1024x1536
+<风格锚点：主色 + 点缀色(色值)>, clear space for headline typography,
+print-ready composition, no embedded text (typography added later in code),
+1024x1536
 ```
 
 ## 风格迁移/编辑公式（官方 demo 手法）
@@ -148,12 +149,12 @@ and scene layout.
 | 未来科幻 | cool blue palette, neon glows, holographic lighting, reflective surfaces |
 | Lo-Fi 漫画 | bold outlines, simplified shading, muted retro colors, soft halftone |
 
-游戏资产场景的编辑示例（把截图转成设定图、把白模渲染图上材质）：
+编辑示例（把截图转成宣传图、给白模渲染图上材质）：
 
 ```
 Recreate the attached screenshot as a polished marketing key art: same
 composition and camera angle, add dramatic lighting, atmospheric fog and
-cinematic color grading in gunmetal + cyan palette. Output requirements:
+cinematic color grading in <风格锚点：配色描述>. Output requirements:
 1536x1024, keep every structural element in place.
 ```
 
@@ -166,8 +167,7 @@ cinematic color grading in gunmetal + cyan palette. Output requirements:
 
 ```
 Keep the exact composition, subject pose, framing and color palette.
-Change only the background: replace the plain wall with a dark sci-fi
-corridor with soft cyan emissive strips.
+Change only the background: replace the plain wall with <新背景描述>.
 ```
 
 常用修订方向词：readability（轮廓/对比度）、identity（主体特征是否走样）、
