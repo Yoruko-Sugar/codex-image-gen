@@ -1,25 +1,37 @@
 ---
 name: codex-image-gen
-description: 调用本机已登录 ChatGPT 的 codex CLI 生成贴图/纹理——无缝平铺材质贴图、PBR 通道图（albedo/normal/roughness/metallic）、照片转贴图、贴图编辑与迭代精修（修接缝/调色/换材质风格）。用户提到"贴图、纹理、材质图、法线图、粗糙度图、金属度图、PBR、tiling、seamless、生成/改/修贴图、把这张照片做成贴图"时使用。仅限贴图纹理：UI 图标、插画、海报、概念图、特效精灵、SVG、3D 建模均不适用本技能。
+description: 调用本机已登录 ChatGPT 的 codex CLI 生成项目美术图片——贴图、UI 图标/界面素材、插画、海报、特效精灵、概念图、关键视觉、logo，以及图像编辑与风格迁移（改图/换风格/迭代精修）、程序化矢量 SVG。用户需要任何 AI 生成的图片/贴图/图标/插画/海报/logo/素材，或要"改一下这张图"、"换个风格"、"P个图"、"来一张图"、"生成个图标"时使用。仅 3D 建模/模型导出不适用（由 agent 直接处理）。
 ---
 
-# Codex 贴图生成
+# Codex 生图
 
-通过用户本机的 codex CLI（与其 ChatGPT 桌面客户端共享登录态）生成贴图，
+通过用户本机的 codex CLI（与其 ChatGPT 桌面客户端共享登录态）生成图片，
 生成走用户的 ChatGPT 订阅额度（每张约 30–60 秒、~1.3 万 token）。
 
-**边界**：本技能只管贴图/纹理。UI 图标、插画、海报、概念图、特效精灵、
-矢量 SVG、3D 模型一律不走本技能（建模由 agent 直接写 trimesh/Blender
-脚本处理，不需要本技能的调用器）。
+**边界**：一切图片生成与编辑都走本技能。仅 3D 建模/模型（GLB 等）
+不经本技能——由 agent 直接写 trimesh/Blender 脚本处理。
 
-## 核心心法（决定贴图质量的三件事）
+## 核心心法（决定出图质量的三件事）
 
-1. **无缝是验收出来的，不是许愿出来的**——提示词写 `seamless tileable`，
-   交付前必须过 `--expect-tile` 程序化接缝检测。
-2. **一套材质的通道图从同一张 albedo 派生**——normal/roughness/metallic
-   用 `--edit albedo.png` 派生才能像素对齐，分别文生图会错位。
-3. **迭代精修而非一次到位**——先出基准 albedo，之后每轮只改一个维度
-   （接缝/配色/细节密度），`--edit` 上一版继续。
+1. **选对生成路径**：位图（氛围/材质/插画/海报）→ gen_image.py；
+   矢量（图标/logo/边框，要精确色值或无限缩放）→ gen_svg.py。
+2. **用参考图锚定**：codex 支持 `-i` 附图。风格一致性靠 `--ref` 挂已成品，
+   不靠复述提示词——这是官方 showcase 项目（photobooth / rift-vox 等）的标准做法。
+3. **迭代精修而非一次到位**：先出一张基准图，之后每轮只改一个维度
+   （`--edit` 上一版 + 单项修订指令）。showcase 里所有惊艳的作品都是
+   6 轮左右迭代的产物，没有一张是一次成的。
+
+## 生成路径选择
+
+| 需求 | 路径 | 理由 |
+|---|---|---|
+| 贴图/精灵/概念图/关键视觉/海报/插画 | `gen_image.py` 文生图 | 氛围与材质细节 |
+| 已有图改风格/改局部/派生通道图 | `gen_image.py --edit` | 官方风格迁移公式 |
+| 同批多张、风格要统一 | `gen_image.py --ref` | 挂第一张成品当锚 |
+| UI 图标/logo/九宫格边框/示意图 | `gen_svg.py` | 无限缩放、色值精确、可代码微调 |
+
+拿不准位图还是矢量时：要"感觉"选位图，要"精确"选矢量；图标集两路都
+可以，矢量更适合批量同风格。
 
 ## 1. 环境自检（首次必做）
 
@@ -27,8 +39,7 @@ description: 调用本机已登录 ChatGPT 的 codex CLI 生成贴图/纹理—�
 
 - mac：`brew install codex`
 - win / 任意平台：`npm install -g @openai/codex`
-- 中国网络下 brew/npm 直连慢或 GitHub release 被重置时：npm 可换
-  `--registry=https://registry.npmmirror.com`
+- 中国网络下 brew/npm 直连慢或 GitHub release 被重置时：npm 可换 `--registry=https://registry.npmmirror.com`
 - 已安装但脚本找不到：环境变量 `CODEX_BIN` 指向二进制路径
 
 装完运行 `codex login status`。若未登录，**让用户本人运行一次 `codex login`**
@@ -36,70 +47,86 @@ description: 调用本机已登录 ChatGPT 的 codex CLI 生成贴图/纹理—�
 
 ## 2. 写提示词
 
-完整英文提示词，一段式。模板见
-`<skill目录>/references/prompt_library.md`（无缝 albedo、PBR 通道图派生、
-照片转贴图、材质风格迁移、迭代修订指令）。要点：
+完整英文提示词，一段式。模板与手法见
+`<skill目录>/references/prompt_library.md`——按场景取用（无缝贴图/特效精灵/
+透明底精灵/UI 图标/关键视觉/角色设定/序列帧/场景背景/九宫格/PBR 通道图/海报，
+以及官方风格迁移四段公式）。要点：
 
-- 尺寸写在提示词末尾（codex 会遵守），贴图常用 1024x1024
-- 风格锚点（底色 + 点缀光色 + 质感关键词）全组复用同一段，写成
-  `<...>` 槽位填项目自己的
-- 编辑场景必须写**保持子句**（preserve layout/alignment...），
-  否则模型会顺手重画纹理布局
+- 尺寸写在提示词末尾，codex 会遵守
+- 编辑场景必须写**保持子句**（preserve identity, pose, composition…），
+  否则模型会顺手重画构图
+- 修订指令每轮只改一个维度，先说保持、再说修改
 
 ## 3. 调用生成
 
 跨平台脚本（`python3` 不存在则用 `python`）。三种模式：
 
 ```bash
-# 文生图：无缝 albedo 贴图
+# 文生图（模板 + 验收开关）
 python3 <skill目录>/scripts/gen_image.py \
   --prompt-file /tmp/prompt.txt \
-  --out /abs/path/brick_albedo.png \
-  --expect-size 1024x1024 \
-  --expect-tile
+  --out /abs/path/to/output.png \
+  --expect-size 512x512 \
+  --expect-black-bg      # 特效精灵用
+  --expect-tile          # 无缝贴图用
+  --expect-alpha         # 透明底精灵用
 
-# 参考图生成（同材质组风格锚定，--ref 可重复）
+# 参考图生成（风格/主体锚定，--ref 可重复）
 python3 <skill目录>/scripts/gen_image.py \
   --prompt-file /tmp/prompt.txt \
-  --ref /abs/path/first_texture.png \
-  --out /abs/path/next_texture.png \
-  --expect-tile
+  --ref /abs/path/anchor.png \
+  --out /abs/path/to/output.png
 
-# 编辑模式（派生通道图/修接缝/调色/迭代精修）
+# 编辑模式（风格迁移/局部修改/迭代精修；指令长就用 --instruction-file）
 python3 <skill目录>/scripts/gen_image.py \
-  --edit /abs/path/brick_albedo.png \
-  --instruction "Convert this albedo texture into the matching tangent-space normal map ..." \
-  --out /abs/path/brick_normal.png
+  --edit /abs/path/to/source.png \
+  --instruction "Keep the exact composition and framing. Change only the palette to warm amber accents." \
+  --out /abs/path/to/output.png
 ```
 
 脚本内部：codex 定位 → 登录预检 → `codex exec`（参考图经 `-i` 附图）→
-尺寸/平铺程序化验收。生成失败自动重试一次并打印 codex 输出尾部辅助
-诊断；`GEN_OK` 且各项 `OK` 才算过（SKIP 视为通过）。
+尺寸/黑底/透明/平铺程序化验收。生成失败自动重试一次并打印 codex 输出尾部
+辅助诊断；`GEN_OK` 且各项 `OK` 才算过（SKIP 视为通过）。退出码见各脚本头注释。
 
 要点：
 
 - `--out` 用绝对路径；脚本会自动创建父目录
-- 一次生成一张；一套材质逐张调用（见"批量一致性"）
+- 一次生成一张；多张就多次调用（见"批量一致性"）
 - 连续失败看输出的 codex tail：多为额度/网络/提示词被安全策略拒
 
-## 4. 一套标准 PBR 材质的工作流
+## 4. 迭代精修工作流（高质量输出的来源）
 
-1. 文生图出基准 albedo（`--expect-tile` 过接缝检测；FAIL 就加
-   `seamless top-bottom and left-right wraparound` 补丁重生成）
-2. 用 `--edit albedo` 依次派生 normal / roughness / metallic
-   （提示词模板见提示词库"通道图派生"节）
-3. 需要调色/换材质风格时，`--edit albedo` 改完 albedo 后，
-   通道图必须从**新版 albedo 重新派生**，否则错位
-4. 把生成产物路径告诉用户，并提示其归属（AI 生成、走谁的额度）
+1. 第一轮用模板文生图出基准图，只求构图/风格方向正确
+2. 看图（Read 工具直接看 PNG），确定下一轮唯一要改的维度
+3. `--edit 基准图 --instruction "<保持子句> + <单项修改>"` 出第二版
+4. 重复 2–3，通常 2–4 轮收敛；满意的版本留作后续同批素材的 `--ref` 锚
+
+把生成产物路径告诉用户，并提示其归属（AI 生成、走谁的额度）。
 
 ## 5. 批量一致性
 
-同项目多张贴图（墙面/地面/金属一组）：
+同批 N 张（图标集/贴图组/序列帧）：
 
 1. 先按第 4 节迭代出一张"风格定稿"
-2. 其余各张全部 `--ref 定稿.png` + 各自材质提示词（提示词里仍要重复
+2. 其余 N-1 张全部 `--ref 定稿.png` + 各自内容提示词（提示词里仍要重复
    风格锚点措辞，双重锚定）
-3. 交付前逐张过 `--expect-tile`
+3. 交付前并排检查（可用 PIL 拼贴成一张 contact sheet 给自己看）
+
+## 6. 程序化矢量（gen_svg.py）
+
+codex 直接手写 SVG——适合 UI 图标/logo/九宫格边框/示意图：无限缩放不糊、
+品牌色硬编码精确、体积小、后续可用代码继续调。
+
+```bash
+python3 <skill目录>/scripts/gen_svg.py \
+  --prompt-file /tmp/brief.txt \
+  --out /abs/path/to/icon.svg \
+  --viewbox 512
+```
+
+脚本校验：XML 可解析、viewBox 匹配、含矢量元素、无位图嵌入。
+图标集批量：同一段风格描述 + 各图标主体，逐个调用；SVG 文本可直接
+diff 和微调，比位图批量更稳。
 
 ## 排障
 
@@ -108,10 +135,11 @@ python3 <skill目录>/scripts/gen_image.py \
 | `codex not found` | 见步骤 1 安装指引；或设 `CODEX_BIN` |
 | `not logged in` | 用户本人跑一次 `codex login` |
 | `output not created` | 看脚本打印的 codex output tail：多为额度/网络；脚本已自动重试一次 |
-| 尺寸不符 | 提示词末尾尺寸写明确（如 `1024x1024`），重新生成 |
-| 接缝明显 | 加 `seamless ... wraparound` 补丁重生成；仍 FAIL 就 `--edit` 该图追加 "remove visible seams at tile edges" |
-| 通道图错位 | 通道图必须从当前版 albedo 用 `--edit` 派生，不能单独文生图 |
-| 编辑后纹理布局变了 | 指令里补保持子句（preserve texture layout and alignment） |
+| 尺寸不符 | 提示词末尾尺寸写明确（如 `512x512`），重新生成 |
+| 接缝明显 | 加 `seamless ... wraparound` 补丁重生成 |
+| 编辑后构图变了 | 指令里补保持子句（preserve composition/pose/framing） |
+| 透明底不透明 | 提示词加 `isolated on fully transparent background`，配 `--expect-alpha` |
+| SVG 嵌了位图 | 提示词强调 `NO <image>, pure vector only` 重生成 |
 | 超时 900s | `--timeout` 调大或重试；连续超时让用户检查网络 |
 
 ## 分发说明（给安装本技能的人）
@@ -119,5 +147,5 @@ python3 <skill目录>/scripts/gen_image.py \
 把整个 `codex-image-gen/` 目录放入 `~/.agents/skills/`（全局）或项目内
 `.agents/skills/`（单项目），重启 ZCode 会话即可被发现。首次使用需本机已
 安装 codex CLI 并完成 `codex login`（与 ChatGPT 桌面客户端共享登录态，
-装过桌面版通常无需再登录）。可选依赖：`pip3 install pillow`（开启平铺
-程序化验收）。
+装过桌面版通常无需再登录）。可选依赖：`pip3 install pillow`（开启黑底/
+透明/平铺验收）。
