@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
-"""codex 生图调用器（mac/win 跨平台）。
+"""codex 贴图生成调用器（mac/win 跨平台）。
 
 三种模式：
-  # 1. 文生图
-  python3 gen_image.py --prompt-file p.txt --out out.png --expect-size 1024x1024
-  # 2. 参考图生成（风格/主体锚定，可多张；经 codex exec -i 附图）
-  python3 gen_image.py --prompt-file p.txt --ref style.png --ref subject.png --out out.png
-  # 3. 编辑模式（改造现有图：风格迁移 / 局部修改 / 迭代精修）
-  python3 gen_image.py --edit src.png --instruction "make the rim glow amber" --out out.png
+  # 1. 文生图（无缝 albedo 等）
+  python3 gen_image.py --prompt-file p.txt --out brick_albedo.png \
+      --expect-size 1024x1024 --expect-tile
+  # 2. 参考图生成（同材质组风格锚定，--ref 可重复；经 codex exec -i 附图）
+  python3 gen_image.py --prompt-file p.txt --ref group_anchor.png --out ground.png
+  # 3. 编辑模式（派生通道图 / 修接缝 / 调色 / 迭代精修）
+  python3 gen_image.py --edit brick_albedo.png \
+      --instruction "Convert this albedo texture into the matching tangent-space normal map ..." \
+      --out brick_normal.png
      （长指令用 --instruction-file i.txt）
 
-验收开关：--expect-size WxH / --expect-black-bg / --expect-tile / --expect-alpha
+验收开关：--expect-size WxH / --expect-tile（平铺接缝检测）
 生成失败自动重试一次；仍失败时打印 codex 输出尾部辅助诊断。
 
 退出码：0 成功 / 2 codex 未安装 / 3 未登录 / 4 生成失败 / 5 验收不达标
@@ -49,45 +52,28 @@ def png_size(path: str):
     return int(w), int(h)
 
 
-def check_pil(kind: str, path: str) -> str:
+def check_tile(path: str) -> str:
+    """平铺接缝检测：对比左右/上下边缘像素差。需要 PIL。"""
     try:
         from PIL import Image
     except ImportError:
-        return f"{kind}: SKIP (no PIL)"
-    im = Image.open(path)
-    if kind == "black-bg":
-        rgb = im.convert("RGB")
-        w, h = rgb.size
-        corners = [rgb.getpixel(p) for p in [(4, 4), (w - 5, 4), (4, h - 5), (w - 5, h - 5)]]
-        m = sum(sum(c) for c in corners) / 12
-        return f"black-bg corner={m:.0f} {'OK' if m < 20 else 'FAIL'}"
-    if kind == "alpha":
-        if im.mode not in ("RGBA", "LA", "PA"):
-            return "alpha: FAIL (image has no alpha channel)"
-        a = im.convert("RGBA")
-        w, h = a.size
-        corners = [a.getpixel(p)[3] for p in [(4, 4), (w - 5, 4), (4, h - 5), (w - 5, h - 5)]]
-        m = sum(corners) / 4
-        return f"alpha corner={m:.0f} {'OK' if m < 20 else 'FAIL'}"
-    if kind == "tile":
-        px = list(im.convert("RGB").getdata())
-        w, h = im.size
-        lr = sum(abs(px[i * w][c] - px[i * w + w - 1][c]) for i in range(0, h, 16) for c in range(3)) / (h / 16 * 3)
-        tb = sum(abs(px[i][c] - px[(h - 1) * w + i][c]) for i in range(0, w, 16) for c in range(3)) / (w / 16 * 3)
-        return f"tile LR={lr:.0f} TB={tb:.0f} {'OK' if max(lr, tb) < 25 else 'FAIL'}"
-    return "?"
+        return "tile: SKIP (no PIL)"
+    px = list(Image.open(path).convert("RGB").getdata())
+    w, h = Image.open(path).size
+    lr = sum(abs(px[i * w][c] - px[i * w + w - 1][c]) for i in range(0, h, 16) for c in range(3)) / (h / 16 * 3)
+    tb = sum(abs(px[i][c] - px[(h - 1) * w + i][c]) for i in range(0, w, 16) for c in range(3)) / (w / 16 * 3)
+    return f"tile LR={lr:.0f} TB={tb:.0f} {'OK' if max(lr, tb) < 25 else 'FAIL'}"
 
 
 def build_prompt(args, prompt: str, out_path: Path) -> str:
     """按模式拼装给 codex 的完整指令。"""
     size_note = f"Target dimensions {args.expect_size}. " if args.expect_size else ""
     if args.edit:
-        # 编辑模式：官方风格迁移公式 = 转换指令 + 保持子句 + 输出要求
         return (
             "Transform the attached image (the only attached input image) as follows:\n\n"
             f"{prompt.strip()}\n\n"
             "Output requirements: preserve everything not explicitly changed "
-            "(identity, pose, composition, framing, scene layout). "
+            "(texture layout, scale and tile alignment). "
             f"{size_note}"
             f"Save the result as {out_path} (overwrite if exists). "
             "Reply with only the file path when done."
@@ -96,7 +82,7 @@ def build_prompt(args, prompt: str, out_path: Path) -> str:
     if args.ref:
         ref_note = (
             "The attached image(s) are visual conditioning for the generation "
-            "(style/subject anchors — follow how the prompt says to use them).\n\n"
+            "(style/material anchors — follow how the prompt says to use them).\n\n"
         )
     return (
         f"{ref_note}"
@@ -121,16 +107,13 @@ def main():
     ap.add_argument("--prompt", default="")
     ap.add_argument("--prompt-file", default="")
     ap.add_argument("--ref", action="append", default=[],
-                    help="参考图路径，可重复；经 codex -i 附图（风格/主体锚定）")
-    ap.add_argument("--edit", default="", help="编辑模式的源图路径（改造现有图）")
+                    help="参考图路径，可重复；经 codex -i 附图（风格/材质锚定）")
+    ap.add_argument("--edit", default="", help="编辑模式的源图路径（派生通道图/修接缝/调色）")
     ap.add_argument("--instruction", default="", help="编辑模式的转换指令")
     ap.add_argument("--instruction-file", default="")
     ap.add_argument("--out", required=True, help="输出 PNG 绝对或相对路径")
-    ap.add_argument("--expect-size", default="", help="如 512x512")
-    ap.add_argument("--expect-black-bg", action="store_true")
-    ap.add_argument("--expect-tile", action="store_true")
-    ap.add_argument("--expect-alpha", action="store_true",
-                    help="要求四角透明（透明底精灵/图标）")
+    ap.add_argument("--expect-size", default="", help="如 1024x1024")
+    ap.add_argument("--expect-tile", action="store_true", help="平铺接缝检测")
     ap.add_argument("--timeout", type=int, default=900)
     ap.add_argument("--retries", type=int, default=1, help="生成失败后的自动重试次数")
     args = ap.parse_args()
@@ -210,13 +193,10 @@ def main():
             good = size == want
             ok = ok and good
             print(f"expect-size {want[0]}x{want[1]}: {'OK' if good else 'FAIL'}")
-    for flag, kind in ((args.expect_black_bg, "black-bg"),
-                       (args.expect_alpha, "alpha"),
-                       (args.expect_tile, "tile")):
-        if flag:
-            res = check_pil(kind, str(out_path))
-            print(res)
-            ok = ok and not res.endswith("FAIL")
+    if args.expect_tile:
+        res = check_tile(str(out_path))
+        print(res)
+        ok = ok and not res.endswith("FAIL")
     sys.exit(0 if ok else 5)
 
 
